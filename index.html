@@ -503,9 +503,12 @@
           ['left','right'].forEach(side => {
             const mark = document.createElement('div');
             mark.className = 'crop-mark horizontal';
-            const x = side === 'left'
-              ? Math.max(0, gridLeftFrame - markPadding - markLength)
-              : Math.max(0, gridRightFrame + markPadding);
+            let x;
+            if (side === 'left') {
+              x = Math.max(0, Math.min(gridLeftFrame - markPadding - markLength, pageWidth - markLength));
+            } else {
+              x = Math.max(0, Math.min(gridRightFrame + markPadding, pageWidth - markLength));
+            }
             mark.style.left = `${x}in`;
             mark.style.top = `${y}in`;
             mark.style.width = `${markLength}in`;
@@ -520,9 +523,12 @@
           ['top','bottom'].forEach(side => {
             const mark = document.createElement('div');
             mark.className = 'crop-mark vertical';
-            const y = side === 'top'
-              ? Math.max(0, gridTopFrame - markPadding - markLength)
-              : Math.max(0, gridBottomFrame + markPadding);
+            let y;
+            if (side === 'top') {
+              y = Math.max(0, Math.min(gridTopFrame - markPadding - markLength, pageHeight - markLength));
+            } else {
+              y = Math.max(0, Math.min(gridBottomFrame + markPadding, pageHeight - markLength));
+            }
             mark.style.left = `${x}in`;
             mark.style.top = `${y}in`;
             mark.style.height = `${markLength}in`;
