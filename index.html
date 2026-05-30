@@ -149,7 +149,7 @@
       box-shadow: 0 22px 60px rgba(15,23,42,0.14);
       display: grid;
       place-items: center;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .paper-inner {
@@ -169,10 +169,19 @@
       place-items: center;
     }
 
+    .crop-marks {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 2;
+      overflow: visible;
+    }
+
     .crop-mark {
       position: absolute;
       pointer-events: none;
-      z-index: 2;
+      z-index: 1;
     }
 
     .crop-mark.horizontal {
@@ -348,10 +357,7 @@
           <div class="grid-container" id="gridContainer"></div>
         </div>
       </div>
-      <div class="crop-mark horizontal" id="cropTop"></div>
-      <div class="crop-mark horizontal" id="cropBottom"></div>
-      <div class="crop-mark vertical" id="cropLeft"></div>
-      <div class="crop-mark vertical" id="cropRight"></div>
+      <div class="crop-marks" id="cropMarks"></div>
       <div class="instructions">The preview uses actual inches for print-scale accuracy when printing at 100% on the selected page size.</div>
     </div>
   </main>
@@ -384,10 +390,7 @@
       pageContent: document.getElementById('pageContent'),
       pasteHint: document.getElementById('pasteHint'),
       gridContainer: document.getElementById('gridContainer'),
-      cropTop: document.getElementById('cropTop'),
-      cropBottom: document.getElementById('cropBottom'),
-      cropLeft: document.getElementById('cropLeft'),
-      cropRight: document.getElementById('cropRight'),
+      cropMarks: document.getElementById('cropMarks'),
     };
 
     const splitNumber = value => Number(value.toFixed(3));
@@ -465,10 +468,7 @@
       elements.gridContainer.style.gap = `${gap}in`;
 
       if (count === 0) {
-        elements.cropTop.hidden = true;
-        elements.cropBottom.hidden = true;
-        elements.cropLeft.hidden = true;
-        elements.cropRight.hidden = true;
+        elements.cropMarks.innerHTML = '';
         return;
       }
 
@@ -481,37 +481,55 @@
       elements.gridContainer.style.top = `${offsetTop}in`;
       elements.gridContainer.style.position = 'absolute';
 
-      const cropLength = 0.5;
-      const markInset = 0.125;
-      const pageOffsetX = pageMargin;
-      const pageOffsetY = pageMargin;
-      const gridLeft = pageOffsetX + offsetLeft;
-      const gridTop = pageOffsetY + offsetTop;
+      const markLength = 0.2;
+      const markPadding = 0.25;
+      const gridLeft = offsetLeft;
+      const gridTop = offsetTop;
+      const gridRight = gridLeft + occupancyWidth;
+      const gridBottom = gridTop + occupancyHeight;
+      const pageOffset = pageMargin;
+      const gridLeftFrame = gridLeft + pageOffset;
+      const gridTopFrame = gridTop + pageOffset;
+      const gridRightFrame = gridRight + pageOffset;
+      const gridBottomFrame = gridBottom + pageOffset;
+      const pageWidth = paper.width;
+      const pageHeight = paper.height;
 
-      elements.cropTop.hidden = false;
-      elements.cropBottom.hidden = false;
-      elements.cropLeft.hidden = false;
-      elements.cropRight.hidden = false;
+      elements.cropMarks.innerHTML = '';
 
-      elements.cropTop.style.left = `${gridLeft}in`;
-      elements.cropTop.style.top = `${markInset}in`;
-      elements.cropTop.style.width = `${occupancyWidth}in`;
-      elements.cropTop.style.height = `0`;
+      for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
+        [0, tileHeight].forEach(offset => {
+          const y = gridTopFrame + rowIndex * (tileHeight + gap) + offset;
+          ['left','right'].forEach(side => {
+            const mark = document.createElement('div');
+            mark.className = 'crop-mark horizontal';
+            const x = side === 'left'
+              ? Math.max(0, gridLeftFrame - markPadding - markLength)
+              : Math.max(0, gridRightFrame + markPadding);
+            mark.style.left = `${x}in`;
+            mark.style.top = `${y}in`;
+            mark.style.width = `${markLength}in`;
+            elements.cropMarks.appendChild(mark);
+          });
+        });
+      }
 
-      elements.cropBottom.style.left = `${gridLeft}in`;
-      elements.cropBottom.style.top = `${paper.height - markInset}in`;
-      elements.cropBottom.style.width = `${occupancyWidth}in`;
-      elements.cropBottom.style.height = `0`;
-
-      elements.cropLeft.style.left = `${markInset}in`;
-      elements.cropLeft.style.top = `${gridTop}in`;
-      elements.cropLeft.style.height = `${occupancyHeight}in`;
-      elements.cropLeft.style.width = `0`;
-
-      elements.cropRight.style.left = `${paper.width - markInset}in`;
-      elements.cropRight.style.top = `${gridTop}in`;
-      elements.cropRight.style.height = `${occupancyHeight}in`;
-      elements.cropRight.style.width = `0`;
+      for (let colIndex = 0; colIndex < columns; colIndex += 1) {
+        [0, tileWidth].forEach(offset => {
+          const x = gridLeftFrame + colIndex * (tileWidth + gap) + offset;
+          ['top','bottom'].forEach(side => {
+            const mark = document.createElement('div');
+            mark.className = 'crop-mark vertical';
+            const y = side === 'top'
+              ? Math.max(0, gridTopFrame - markPadding - markLength)
+              : Math.max(0, gridBottomFrame + markPadding);
+            mark.style.left = `${x}in`;
+            mark.style.top = `${y}in`;
+            mark.style.height = `${markLength}in`;
+            elements.cropMarks.appendChild(mark);
+          });
+        });
+      }
 
       const dataUrl = state.imageUrl;
       for (let index = 0; index < count; index += 1) {
@@ -540,6 +558,33 @@
         state.imageNaturalHeight = img.naturalHeight || img.height || 1;
         state.imageUrl = url;
         elements.pasteHint.style.opacity = '0';
+        
+        const paper = paperSizes[state.paper];
+        const pageMargin = 0.25;
+        const gap = 0.25;
+        const usableWidth = paper.width - pageMargin * 2;
+        const usableHeight = paper.height - pageMargin * 2;
+        const aspectRatio = state.imageNaturalWidth / state.imageNaturalHeight || 1;
+        let baseWidth = usableWidth;
+        let baseHeight = usableWidth / aspectRatio;
+        if (baseHeight > usableHeight) {
+          baseHeight = usableHeight;
+          baseWidth = usableHeight * aspectRatio;
+        }
+        
+        for (let testScale = 100; testScale >= 10; testScale -= 1) {
+          const tileWidth = baseWidth * testScale / 100;
+          const tileHeight = baseHeight * testScale / 100;
+          const columns = tileWidth > 0 ? Math.floor((usableWidth + gap) / (tileWidth + gap)) : 0;
+          const rows = tileHeight > 0 ? Math.floor((usableHeight + gap) / (tileHeight + gap)) : 0;
+          if (columns * rows === 4) {
+            state.scale = testScale;
+            elements.scaleRange.value = testScale;
+            elements.scaleNumber.value = testScale;
+            break;
+          }
+        }
+        
         refresh();
       };
       img.onerror = () => {
@@ -590,16 +635,43 @@
     });
 
     elements.scaleRange.addEventListener('input', event => {
-      const value = clamp(Number(event.target.value), 10, 200);
-      state.scale = value;
-      elements.scaleNumber.value = value;
-      refresh();
+      const paper = paperSizes[state.paper];
+      const pageMargin = 0.25;
+      const gap = 0.25;
+      const usableWidth = paper.width - pageMargin * 2;
+      const usableHeight = paper.height - pageMargin * 2;
+      const aspectRatio = state.imageNaturalWidth / state.imageNaturalHeight || 1;
+      let baseWidth = usableWidth;
+      let baseHeight = usableWidth / aspectRatio;
+      if (baseHeight > usableHeight) {
+        baseHeight = usableHeight;
+        baseWidth = usableHeight * aspectRatio;
+      }
+      const testWidth = baseWidth * Number(event.target.value) / 100;
+      const testHeight = baseHeight * Number(event.target.value) / 100;
+      const columns = testWidth > 0 ? Math.floor((usableWidth + gap) / (testWidth + gap)) : 0;
+      const rows = testHeight > 0 ? Math.floor((usableHeight + gap) / (testHeight + gap)) : 0;
+      if (columns * rows > 0) {
+        const value = clamp(Number(event.target.value), 10, 200);
+        state.scale = value;
+        elements.scaleNumber.value = value;
+        refresh();
+      } else {
+        event.target.value = state.scale;
+      }
     });
 
     elements.scaleNumber.addEventListener('input', event => {
       const value = clamp(Number(event.target.value), 10, 200);
       state.scale = value;
       elements.scaleRange.value = value;
+      refresh();
+    });
+
+    elements.scaleRange.addEventListener('change', event => {
+      const value = clamp(Number(event.target.value), 10, 200);
+      state.scale = value;
+      elements.scaleNumber.value = value;
       refresh();
     });
 
