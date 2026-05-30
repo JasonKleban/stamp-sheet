@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stamp Sheet Utility</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper-width: 8.5in;
+      --paper-height: 11in;
+      --page-bg: #f3f4f5;
+      --panel-bg: rgba(255,255,255,0.94);
+      --panel-border: rgba(0,0,0,0.12);
+      --gap: 0.25in;
+      --bleed-size: 0.0625in;
+      --guide-color: rgba(0,0,0,0.5);
+    }
+  </style>
+  <style id="pageSizeStyle"></style>
+  <style>
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: radial-gradient(circle at top left, #eef2f5 0%, var(--page-bg) 40%);
+      color: #111;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      padding: 1rem;
+    }
+
+    .panel {
+      position: fixed;
+      right: 1rem;
+      top: 1rem;
+      width: min(340px, calc(100vw - 2rem));
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.12);
+      padding: 1.2rem;
+      z-index: 100;
+      backdrop-filter: blur(14px);
+    }
+
+    .panel h1 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.2rem;
+    }
+
+    .panel p {
+      margin: 0.4rem 0 1rem 0;
+      line-height: 1.6;
+      color: #42474f;
+      font-size: 0.95rem;
+    }
+
+    .field {
+      margin-bottom: 1rem;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    select, input[type=number], input[type=range] {
+      width: 100%;
+      font: inherit;
+      padding: 0.7rem 0.8rem;
+      border: 1px solid #bec4cc;
+      border-radius: 10px;
+      background: #fff;
+      color: #111;
+    }
+
+    input[type=range] {
+      padding: 0.35rem 0;
+    }
+
+    .row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .row label {
+      flex: 1 0 100%;
+    }
+
+    .row .small {
+      flex: 1 0 50%;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.4rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle input {
+      accent-color: #2563eb;
+    }
+
+    .stats {
+      margin-top: 0.75rem;
+      padding: 0.95rem 1rem;
+      background: #f9fafb;
+      border: 1px solid #e4e7ec;
+      border-radius: 14px;
+      color: #1f2937;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .stats strong {
+      display: inline-block;
+      width: 8rem;
+      color: #111827;
+    }
+
+    .preview-shell {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding-top: 0.75rem;
+    }
+
+    .page-frame {
+      position: relative;
+      width: var(--paper-width);
+      height: var(--paper-height);
+      background: #fafafa;
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 22px 60px rgba(15,23,42,0.14);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .paper-inner {
+      position: relative;
+      width: calc(var(--paper-width) - 0.5in);
+      height: calc(var(--paper-height) - 0.5in);
+      background: white;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+
+    .page-content {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+    }
+
+    .crop-mark {
+      position: absolute;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .crop-mark.horizontal {
+      border-top: 0.5pt solid var(--guide-color);
+      background: none;
+      height: 0;
+    }
+
+    .crop-mark.vertical {
+      border-left: 0.5pt solid var(--guide-color);
+      background: none;
+      width: 0;
+    }
+
+    .grid-container {
+      position: absolute;
+      display: grid;
+      gap: var(--gap);
+      width: max-content;
+      height: max-content;
+      z-index: 1;
+      justify-items: stretch;
+      align-items: stretch;
+      padding: 0;
+    }
+
+    .tile {
+      position: relative;
+      overflow: visible;
+      width: 100%;
+      height: 100%;
+      background: #fff;
+      border-radius: 5px;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.03);
+    }
+
+    .tile::before {
+      content: "";
+      position: absolute;
+      inset: calc(var(--bleed-size) * -1);
+      background-image: var(--tile-image);
+      background-size: calc(100% + calc(var(--bleed-size) * 2)) calc(100% + calc(var(--bleed-size) * 2));
+      background-repeat: no-repeat;
+      background-position: center center;
+      z-index: 0;
+      filter: blur(0.04in);
+      opacity: 0.92;
+    }
+
+    .tile.no-bleed::before {
+      display: none;
+    }
+
+    .tile img {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      display: block;
+      border-radius: 3px;
+    }
+
+    .instructions {
+      position: absolute;
+      bottom: 1rem;
+      left: 1rem;
+      right: 1rem;
+      color: #475569;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .paste-hint {
+      position: absolute;
+      inset: 1rem;
+      border: 2px dashed rgba(100,116,139,0.22);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 0.95rem;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .page-frame.drag-over .paste-hint {
+      border-color: #2563eb;
+      color: #1d4ed8;
+      opacity: 0.95;
+    }
+
+    @media (max-width: 980px) {
+      .panel {
+        position: static;
+        width: auto;
+        margin-bottom: 1rem;
+      }
+
+      .preview-shell {
+        padding-top: 0;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+      }
+
+      .panel, .instructions {
+        display: none !important;
+      }
+
+      .page-frame {
+        box-shadow: none;
+        transform: none;
+      }
+
+      .paper-inner {
+        box-shadow: none;
+      }
+
+      @page {
+        size: 8.5in 11in;
+        margin: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="panel" aria-label="Control panel">
+    <h1>Stamp Sheet Printer</h1>
+    <p>Paste an image and adjust the scale to fit as many repeated prints as possible on the selected paper size.</p>
+
+    <div class="field">
+      <label for="paperSize">Paper size</label>
+      <select id="paperSize" aria-describedby="paperSizeHelp">
+        <option value="letter">Letter (8.5" × 11")</option>
+        <option value="legal">Legal (8.5" × 14")</option>
+        <option value="tabloid">Tabloid (11" × 17")</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="scaleRange">Artwork scale</label>
+      <div class="row">
+        <input id="scaleRange" type="range" min="10" max="200" value="100" step="1" />
+        <input id="scaleNumber" type="number" min="10" max="200" value="100" step="1" aria-label="Scale percent" />
+      </div>
+    </div>
+
+    <div class="field toggle">
+      <input id="bleedToggle" type="checkbox" checked />
+      <label for="bleedToggle">Extend edge colors by 1/16" bleed</label>
+    </div>
+
+    <div class="stats" aria-live="polite">
+      <div><strong>Images:</strong><span id="imageCount">0</span></div>
+      <div><strong>Tile size:</strong><span id="tileSizeInches">0.000 × 0.000 in</span></div>
+      <div><strong>Tile size:</strong><span id="tileSizeMm">0.000 × 0.000 mm</span></div>
+    </div>
+  </section>
+
+  <main class="preview-shell">
+    <div class="page-frame" id="pageFrame">
+      <div class="paper-inner">
+        <div class="page-content" id="pageContent">
+          <div class="paste-hint" id="pasteHint">Paste an image (Ctrl+V / Cmd+V) or drop an image file anywhere on the page.</div>
+          <div class="grid-container" id="gridContainer"></div>
+        </div>
+      </div>
+      <div class="crop-mark horizontal" id="cropTop"></div>
+      <div class="crop-mark horizontal" id="cropBottom"></div>
+      <div class="crop-mark vertical" id="cropLeft"></div>
+      <div class="crop-mark vertical" id="cropRight"></div>
+      <div class="instructions">The preview uses actual inches for print-scale accuracy when printing at 100% on the selected page size.</div>
+    </div>
+  </main>
+
+  <script>
+    const paperSizes = {
+      letter: { width: 8.5, height: 11 },
+      legal: { width: 8.5, height: 14 },
+      tabloid: { width: 11, height: 17 },
+    };
+
+    const state = {
+      paper: 'letter',
+      scale: 100,
+      bleed: true,
+      imageUrl: null,
+      imageNaturalWidth: 1,
+      imageNaturalHeight: 1,
+    };
+
+    const elements = {
+      paperSize: document.getElementById('paperSize'),
+      scaleRange: document.getElementById('scaleRange'),
+      scaleNumber: document.getElementById('scaleNumber'),
+      bleedToggle: document.getElementById('bleedToggle'),
+      imageCount: document.getElementById('imageCount'),
+      tileSizeInches: document.getElementById('tileSizeInches'),
+      tileSizeMm: document.getElementById('tileSizeMm'),
+      pageFrame: document.getElementById('pageFrame'),
+      pageContent: document.getElementById('pageContent'),
+      pasteHint: document.getElementById('pasteHint'),
+      gridContainer: document.getElementById('gridContainer'),
+      cropTop: document.getElementById('cropTop'),
+      cropBottom: document.getElementById('cropBottom'),
+      cropLeft: document.getElementById('cropLeft'),
+      cropRight: document.getElementById('cropRight'),
+    };
+
+    const splitNumber = value => Number(value.toFixed(3));
+    const mmFromInch = inches => inches * 25.4;
+
+    function createPlaceholderDataUrl() {
+      const size = 512;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#d6d8db';
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#9ca3af';
+      ctx.fillRect(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
+      ctx.strokeStyle = '#6b7280';
+      ctx.lineWidth = 16;
+      ctx.strokeRect(size * 0.12, size * 0.12, size * 0.76, size * 0.76);
+      ctx.font = 'bold 56px system-ui';
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('PASTE', size/2, size/2);
+      return canvas.toDataURL('image/png');
+    }
+
+    function setPaperDimensions() {
+      const paper = paperSizes[state.paper];
+      document.documentElement.style.setProperty('--paper-width', `${paper.width}in`);
+      document.documentElement.style.setProperty('--paper-height', `${paper.height}in`);
+
+      const pageStyle = document.getElementById('pageSizeStyle');
+      if (pageStyle) {
+        pageStyle.textContent = `@page { size: ${paper.width}in ${paper.height}in; margin: 0; }`;
+      }
+    }
+
+    function formatSize(widthIn, heightIn) {
+      return `${splitNumber(widthIn).toFixed(3)} × ${splitNumber(heightIn).toFixed(3)} in`;
+    }
+
+    function formatSizeMm(widthIn, heightIn) {
+      return `${splitNumber(mmFromInch(widthIn)).toFixed(3)} × ${splitNumber(mmFromInch(heightIn)).toFixed(3)} mm`;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function renderGrid() {
+      const paper = paperSizes[state.paper];
+      const pageMargin = 0.25;
+      const gap = 0.25;
+      const usableWidth = paper.width - pageMargin * 2;
+      const usableHeight = paper.height - pageMargin * 2;
+      const aspectRatio = state.imageNaturalWidth / state.imageNaturalHeight || 1;
+      let baseWidth = usableWidth;
+      let baseHeight = usableWidth / aspectRatio;
+      if (baseHeight > usableHeight) {
+        baseHeight = usableHeight;
+        baseWidth = usableHeight * aspectRatio;
+      }
+      const tileWidth = baseWidth * state.scale / 100;
+      const tileHeight = baseHeight * state.scale / 100;
+      const columns = tileWidth > 0 ? Math.floor((usableWidth + gap) / (tileWidth + gap)) : 0;
+      const rows = tileHeight > 0 ? Math.floor((usableHeight + gap) / (tileHeight + gap)) : 0;
+      const count = Math.max(0, columns * rows);
+
+      elements.imageCount.textContent = count;
+      elements.tileSizeInches.textContent = formatSize(tileWidth, tileHeight);
+      elements.tileSizeMm.textContent = formatSizeMm(tileWidth, tileHeight);
+
+      elements.gridContainer.innerHTML = '';
+      elements.gridContainer.style.gridTemplateColumns = columns ? `repeat(${columns}, ${tileWidth}in)` : '';
+      elements.gridContainer.style.gridTemplateRows = rows ? `repeat(${rows}, ${tileHeight}in)` : '';
+      elements.gridContainer.style.gap = `${gap}in`;
+
+      if (count === 0) {
+        elements.cropTop.hidden = true;
+        elements.cropBottom.hidden = true;
+        elements.cropLeft.hidden = true;
+        elements.cropRight.hidden = true;
+        return;
+      }
+
+      const occupancyWidth = columns * tileWidth + Math.max(0, columns - 1) * gap;
+      const occupancyHeight = rows * tileHeight + Math.max(0, rows - 1) * gap;
+      const offsetLeft = (usableWidth - occupancyWidth) / 2;
+      const offsetTop = (usableHeight - occupancyHeight) / 2;
+
+      elements.gridContainer.style.left = `${offsetLeft}in`;
+      elements.gridContainer.style.top = `${offsetTop}in`;
+      elements.gridContainer.style.position = 'absolute';
+
+      const cropLength = 0.5;
+      const markInset = 0.125;
+      const pageOffsetX = pageMargin;
+      const pageOffsetY = pageMargin;
+      const gridLeft = pageOffsetX + offsetLeft;
+      const gridTop = pageOffsetY + offsetTop;
+
+      elements.cropTop.hidden = false;
+      elements.cropBottom.hidden = false;
+      elements.cropLeft.hidden = false;
+      elements.cropRight.hidden = false;
+
+      elements.cropTop.style.left = `${gridLeft}in`;
+      elements.cropTop.style.top = `${markInset}in`;
+      elements.cropTop.style.width = `${occupancyWidth}in`;
+      elements.cropTop.style.height = `0`;
+
+      elements.cropBottom.style.left = `${gridLeft}in`;
+      elements.cropBottom.style.top = `${paper.height - markInset}in`;
+      elements.cropBottom.style.width = `${occupancyWidth}in`;
+      elements.cropBottom.style.height = `0`;
+
+      elements.cropLeft.style.left = `${markInset}in`;
+      elements.cropLeft.style.top = `${gridTop}in`;
+      elements.cropLeft.style.height = `${occupancyHeight}in`;
+      elements.cropLeft.style.width = `0`;
+
+      elements.cropRight.style.left = `${paper.width - markInset}in`;
+      elements.cropRight.style.top = `${gridTop}in`;
+      elements.cropRight.style.height = `${occupancyHeight}in`;
+      elements.cropRight.style.width = `0`;
+
+      const dataUrl = state.imageUrl;
+      for (let index = 0; index < count; index += 1) {
+        const tile = document.createElement('div');
+        tile.className = `tile${state.bleed ? '' : ' no-bleed'}`;
+        tile.style.setProperty('--tile-image', `url(${dataUrl})`);
+
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.alt = 'Artwork';
+        img.draggable = false;
+        tile.appendChild(img);
+        elements.gridContainer.appendChild(tile);
+      }
+    }
+
+    function refresh() {
+      setPaperDimensions();
+      renderGrid();
+    }
+
+    function handleImageDataUrl(url) {
+      const img = new Image();
+      img.onload = () => {
+        state.imageNaturalWidth = img.naturalWidth || img.width || 1;
+        state.imageNaturalHeight = img.naturalHeight || img.height || 1;
+        state.imageUrl = url;
+        elements.pasteHint.style.opacity = '0';
+        refresh();
+      };
+      img.onerror = () => {
+        console.warn('Failed to load pasted image data.');
+      };
+      img.src = url;
+    }
+
+    function handlePaste(event) {
+      const clipboard = event.clipboardData;
+      if (!clipboard) return;
+      for (const item of clipboard.items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          const url = URL.createObjectURL(file);
+          handleImageDataUrl(url);
+          return;
+        }
+      }
+
+      const text = clipboard.getData('text/plain');
+      if (text.startsWith('data:image/')) {
+        handleImageDataUrl(text);
+        return;
+      }
+    }
+
+    function handleDrop(event) {
+      event.preventDefault();
+      elements.pageFrame.classList.remove('drag-over');
+      const items = event.dataTransfer?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (!file) continue;
+          const url = URL.createObjectURL(file);
+          handleImageDataUrl(url);
+          return;
+        }
+      }
+    }
+
+    elements.paperSize.addEventListener('change', event => {
+      state.paper = event.target.value;
+      refresh();
+    });
+
+    elements.scaleRange.addEventListener('input', event => {
+      const value = clamp(Number(event.target.value), 10, 200);
+      state.scale = value;
+      elements.scaleNumber.value = value;
+      refresh();
+    });
+
+    elements.scaleNumber.addEventListener('input', event => {
+      const value = clamp(Number(event.target.value), 10, 200);
+      state.scale = value;
+      elements.scaleRange.value = value;
+      refresh();
+    });
+
+    elements.bleedToggle.addEventListener('change', event => {
+      state.bleed = event.target.checked;
+      refresh();
+    });
+
+    document.addEventListener('paste', handlePaste);
+    window.addEventListener('drop', handleDrop);
+    window.addEventListener('dragover', event => {
+      event.preventDefault();
+      elements.pageFrame.classList.add('drag-over');
+    });
+    window.addEventListener('dragleave', event => {
+      elements.pageFrame.classList.remove('drag-over');
+    });
+
+    const initialUrl = createPlaceholderDataUrl();
+    state.imageUrl = initialUrl;
+    state.imageNaturalWidth = 1;
+    state.imageNaturalHeight = 1;
+    refresh();
+  </script>
+</body>
+</html>
